@@ -9,7 +9,7 @@ from .payload_parser import normalize_payload
 
 
 AuthType = Literal["WPA", "WEP", "nopass"]
-TemplateName = Literal["basic_template", "legacy_template", "modern_template"]
+TemplateName = Literal["basic_template"]
 
 
 class WifiRecord(BaseModel):
@@ -36,7 +36,7 @@ class WifiRecord(BaseModel):
     @classmethod
     def normalize_auth_type(cls, value: str) -> AuthType:
         normalized = value.strip().upper()
-        if normalized in {"WPA2", "WPA/WPA2", "WPA-PSK"}:
+        if normalized in {"WPA2", "WPA/WPA2", "WPA-PSK", "PPSK"}:
             return "WPA"
         if normalized in {"WPA", "WEP"}:
             return normalized
@@ -67,6 +67,7 @@ class WifiBatchRequest(BaseModel):
     city: str | None = None
     crm_record_id: str | None = None
     passwords_generated: bool = False
+    update_crm_password_fields: bool = False
     workdrive_folder_id: str | None = None
     template_name: TemplateName = "basic_template"
     records: list[WifiRecord] = Field(min_length=1)

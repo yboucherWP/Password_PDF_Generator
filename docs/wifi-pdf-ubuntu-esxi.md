@@ -269,7 +269,7 @@ Recommended payload:
 {
   "building_name": "101-103 Rue Yanick",
   "workdrive_folder_id": "abc123workdrivefolderid",
-  "template_name": "legacy_template",
+  "template_name": "basic_template",
   "records": [
     {
       "ssid": "app101_jw",

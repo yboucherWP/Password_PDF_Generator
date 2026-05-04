@@ -95,6 +95,40 @@
       "title": "Building Name",
       "type": "string"
     },
+    "city": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "City"
+    },
+    "crm_record_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Crm Record Id"
+    },
+    "passwords_generated": {
+      "default": false,
+      "title": "Passwords Generated",
+      "type": "boolean"
+    },
+    "update_crm_password_fields": {
+      "default": false,
+      "title": "Update Crm Password Fields",
+      "type": "boolean"
+    },
     "workdrive_folder_id": {
       "anyOf": [
         {
@@ -108,11 +142,8 @@
       "title": "Workdrive Folder Id"
     },
     "template_name": {
-      "default": "legacy_template",
-      "enum": [
-        "legacy_template",
-        "modern_template"
-      ],
+      "const": "basic_template",
+      "default": "basic_template",
       "title": "Template Name",
       "type": "string"
     },

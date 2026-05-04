@@ -133,6 +133,8 @@ class WifiPdfPipeline:
             "city": batch.city,
             "template_name": batch.template_name,
             "record_count": len(batch.records),
+            "passwords_generated": batch.passwords_generated,
+            "update_crm_password_fields": batch.update_crm_password_fields,
             "records": [asdict(record) for record in record_outputs],
             "merged_pdf_path": relative_to_root(merged_pdf_path),
             "txt_export_path": relative_to_root(txt_export_path),
@@ -164,11 +166,21 @@ class WifiPdfPipeline:
             for path in upload_candidates:
                 uploads.append(client.upload_file(path, folder_id))
 
-        if batch.passwords_generated and batch.crm_record_id and self.settings.crm.enabled:
+        if (
+            batch.passwords_generated
+            and batch.update_crm_password_fields
+            and batch.crm_record_id
+            and self.settings.crm.enabled
+        ):
             crm_client = ZohoCrmClient(self.settings.crm, self.settings.workdrive, self.logger)
             crm_update = crm_client.update_generated_password_fields(
                 record_id=batch.crm_record_id,
                 passwords=[record.password or "" for record in batch.records],
+            )
+        elif batch.passwords_generated and batch.crm_record_id and self.settings.crm.enabled:
+            self.logger.info(
+                "Skipped CRM password field update for record %s because the request indicated existing password values.",
+                batch.crm_record_id,
             )
 
         if self.settings.workdrive.cleanup_local_after_upload:

@@ -11,7 +11,7 @@ from reportlab.pdfgen import canvas
 from .config import AppSettings
 from .exceptions import RenderingError
 from .models import WifiRecord
-from .templates import draw_basic_template, draw_legacy_template, draw_modern_template
+from .templates import draw_basic_template
 
 
 PAGE_SIZE_MAP = {
@@ -21,8 +21,6 @@ PAGE_SIZE_MAP = {
 
 TEMPLATE_RENDERERS = {
     "basic_template": draw_basic_template,
-    "legacy_template": draw_legacy_template,
-    "modern_template": draw_modern_template,
 }
 
 SYSTEM_FONT_PATHS = {

@@ -32,6 +32,8 @@ UNIT_LABEL_KEYS = ("unit_labels", "Unit_Labels", "unit_label_list")
 AUTH_TYPE_KEYS = ("auth_type", "AUTH_TYPE")
 HIDDEN_KEYS = ("hidden", "Hidden")
 PREDEFINED_KEYS = ("predefined", "Predefined", "Predfined", "predfined")
+TYPE_DE_MDP_KEYS = ("Type_de_MDP", "type_de_mdp", "TYPE_DE_MDP")
+PPSK_SSID_KEYS = ("ppsk_ssid", "PPSK_SSID", "Ppsk_SSID", "PPSKSSID")
 
 WORKDRIVE_QUERY_KEYS = ("id", "folder_id", "resource_id", "parent_id")
 NUMERIC_IDENTIFIER_RE = re.compile(r"^\d+$")
@@ -176,6 +178,25 @@ def normalize_ssid_prefix(mapping: dict[str, Any]) -> str:
     return text
 
 
+def selected_ppsk_ssid(mapping: dict[str, Any]) -> str | None:
+    type_de_mdp = _clean_scalar(_get_first(mapping, TYPE_DE_MDP_KEYS))
+    if not type_de_mdp or type_de_mdp.casefold() != "ppsk":
+        return None
+
+    ssid = _clean_scalar(_get_first(mapping, PPSK_SSID_KEYS))
+    if not ssid:
+        raise PayloadValidationError("PPSK was selected but PPSK_SSID is missing or blank.")
+    return ssid
+
+
+def _record_with_ssid(record: Any, ssid: str) -> Any:
+    if not isinstance(record, dict):
+        return record
+    normalized = dict(record)
+    normalized["SSID" if "SSID" in normalized else "ssid"] = ssid
+    return normalized
+
+
 def generate_suffix(length: int = 2) -> str:
     return "".join(secrets.choice(string.ascii_lowercase) for _ in range(length))
 
@@ -261,7 +282,12 @@ def _build_records_from_ssids(
     return records
 
 
-def _build_records_from_units(mapping: dict[str, Any], units: list[str], passwords: list[str]) -> list[dict[str, Any]]:
+def _build_records_from_units(
+    mapping: dict[str, Any],
+    units: list[str],
+    passwords: list[str],
+    generate_ssids: bool = True,
+) -> list[dict[str, Any]]:
     if not units:
         raise PayloadValidationError("No units were provided.")
     if len(units) != len(passwords):
@@ -276,7 +302,7 @@ def _build_records_from_units(mapping: dict[str, Any], units: list[str], passwor
 
     records: list[dict[str, Any]] = []
     for index, unit in enumerate(units):
-        ssid = f"{prefix}{unit}_{generate_suffix()}" if prefix else unit
+        ssid = f"{prefix}{unit}_{generate_suffix()}" if generate_ssids and prefix else unit
         records.append(
             {
                 "ssid": ssid,
@@ -286,6 +312,41 @@ def _build_records_from_units(mapping: dict[str, Any], units: list[str], passwor
                 "unit_label": unit,
             }
         )
+    return records
+
+
+def _build_records_with_fixed_ssid(
+    mapping: dict[str, Any],
+    ssid: str,
+    record_count_source: list[str],
+    passwords: list[str],
+    unit_labels: list[str],
+) -> list[dict[str, Any]]:
+    if len(record_count_source) != len(passwords):
+        raise PayloadValidationError(
+            f"Record count ({len(record_count_source)}) does not match password count ({len(passwords)})."
+        )
+    if unit_labels and len(unit_labels) != len(record_count_source):
+        raise PayloadValidationError(
+            f"unit_labels count ({len(unit_labels)}) does not match record count ({len(record_count_source)})."
+        )
+
+    auth_type = _clean_scalar(_get_first(mapping, AUTH_TYPE_KEYS)) or "WPA"
+    hidden_value = _get_first(mapping, HIDDEN_KEYS)
+    hidden = bool(hidden_value) if isinstance(hidden_value, bool) else str(hidden_value).strip().lower() == "true"
+
+    records: list[dict[str, Any]] = []
+    for index, record_source in enumerate(record_count_source):
+        record = {
+            "ssid": ssid,
+            "password": passwords[index],
+            "auth_type": auth_type,
+            "hidden": hidden,
+        }
+        label = unit_labels[index] if unit_labels else record_source
+        if label:
+            record["unit_label"] = label
+        records.append(record)
     return records
 
 
@@ -301,18 +362,27 @@ def normalize_payload(raw_payload: Any) -> dict[str, Any]:
     crm_record_id = _clean_scalar(_get_first(payload, CRM_RECORD_ID_KEYS))
     template_name = _clean_scalar(_get_first(payload, TEMPLATE_NAME_KEYS)) or "basic_template"
     workdrive_folder_id = extract_workdrive_folder_id(_get_first(payload, WORKDRIVE_KEYS))
+    ppsk_ssid = selected_ppsk_ssid(payload)
 
     if "records" in payload:
-        normalized = dict(payload)
-        if building_name is not None:
-            normalized["building_name"] = building_name
+        records_payload = payload["records"]
+        normalized = {
+            "building_name": building_name,
+            "template_name": template_name,
+            "records": records_payload,
+        }
+        if ppsk_ssid and isinstance(records_payload, list):
+            normalized["records"] = [_record_with_ssid(record, ppsk_ssid) for record in records_payload]
         if workdrive_folder_id is not None:
             normalized["workdrive_folder_id"] = workdrive_folder_id
         if city is not None:
             normalized["city"] = city
         if crm_record_id is not None:
             normalized["crm_record_id"] = crm_record_id
-        normalized["template_name"] = template_name
+        if "passwords_generated" in payload:
+            normalized["passwords_generated"] = payload["passwords_generated"]
+        if "update_crm_password_fields" in payload:
+            normalized["update_crm_password_fields"] = payload["update_crm_password_fields"]
         return normalized
 
     ssids = parse_string_list(_get_first(payload, SSIDS_KEYS), "ssids")
@@ -330,27 +400,45 @@ def normalize_payload(raw_payload: Any) -> dict[str, Any]:
         )
 
     passwords = parse_password_lists(payload)
-    passwords_generated = predefined is False or (predefined is None and not passwords)
+    supplied_passwords_present = bool(passwords)
+    passwords_generated = False if ppsk_ssid else predefined is False or (predefined is None and not passwords)
+    update_crm_password_fields = passwords_generated and not supplied_passwords_present
     if passwords_generated:
         passwords = generate_passwords(len(record_count_source))
     elif not passwords:
+        if ppsk_ssid:
+            raise PayloadValidationError(
+                "Type_de_MDP is PPSK, so supplied passwords are required. "
+                "Send Mots_de_passes or numbered password fields such as Mots_de_passes_2."
+            )
         raise PayloadValidationError(
             "No passwords were provided. Send records, passwords, Mots_de_passes, or numbered password fields such as Mots_de_passes_2."
         )
 
-    if ssids:
-        if has_numeric_identifiers(ssids):
+    if ppsk_ssid:
+        records = _build_records_with_fixed_ssid(
+            payload,
+            ppsk_ssid,
+            record_count_source,
+            passwords,
+            unit_labels or units,
+        )
+    elif ssids:
+        if predefined is True:
+            records = _build_records_from_ssids(payload, ssids, passwords, unit_labels or units)
+        elif has_numeric_identifiers(ssids):
             records = _build_records_from_units(payload, ssids, passwords)
         else:
             records = _build_records_from_ssids(payload, ssids, passwords, unit_labels or units)
     else:
-        records = _build_records_from_units(payload, units, passwords)
+        records = _build_records_from_units(payload, units, passwords, generate_ssids=predefined is not True)
 
     normalized = {
         "building_name": building_name,
         "city": city,
         "crm_record_id": crm_record_id,
         "passwords_generated": passwords_generated,
+        "update_crm_password_fields": update_crm_password_fields,
         "template_name": template_name,
         "records": records,
     }

@@ -20,7 +20,7 @@ def main() -> None:
     parser.add_argument("--log-level", default="INFO", help="Python logging level.")
     parser.add_argument(
         "--template-name",
-        choices=["basic_template", "legacy_template", "modern_template"],
+        choices=["basic_template"],
         default=None,
         help="Override the template name from the input payload.",
     )
