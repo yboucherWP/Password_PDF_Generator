@@ -193,6 +193,9 @@ def _record_with_ssid(record: Any, ssid: str) -> Any:
     if not isinstance(record, dict):
         return record
     normalized = dict(record)
+    original_ssid = _clean_scalar(normalized.get("SSID") or normalized.get("ssid"))
+    if original_ssid and not _clean_scalar(normalized.get("unit_label")):
+        normalized["unit_label"] = original_ssid
     normalized["SSID" if "SSID" in normalized else "ssid"] = ssid
     return normalized
 
@@ -383,6 +386,10 @@ def normalize_payload(raw_payload: Any) -> dict[str, Any]:
             normalized["passwords_generated"] = payload["passwords_generated"]
         if "update_crm_password_fields" in payload:
             normalized["update_crm_password_fields"] = payload["update_crm_password_fields"]
+        if "use_unit_labels_for_exports" in payload:
+            normalized["use_unit_labels_for_exports"] = payload["use_unit_labels_for_exports"]
+        elif ppsk_ssid:
+            normalized["use_unit_labels_for_exports"] = True
         return normalized
 
     ssids = parse_string_list(_get_first(payload, SSIDS_KEYS), "ssids")
@@ -439,6 +446,7 @@ def normalize_payload(raw_payload: Any) -> dict[str, Any]:
         "crm_record_id": crm_record_id,
         "passwords_generated": passwords_generated,
         "update_crm_password_fields": update_crm_password_fields,
+        "use_unit_labels_for_exports": bool(ppsk_ssid),
         "template_name": template_name,
         "records": records,
     }

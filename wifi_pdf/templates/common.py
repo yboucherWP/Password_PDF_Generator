@@ -248,6 +248,26 @@ def draw_label_value_panel(
     canvas.drawString(x + label_width + 12, y + 10, password)
 
 
+def draw_unit_label(
+    canvas: Canvas,
+    record: WifiRecord,
+    x: float,
+    y: float,
+    max_width: float,
+    fonts: dict[str, str],
+    theme: dict[str, colors.Color | str],
+) -> None:
+    unit_label = (record.unit_label or "").strip()
+    if not unit_label:
+        return
+
+    label = f"Logement | Unit: {unit_label}"
+    font_size = fit_font_size(label, fonts["bold"], max_width, 10, 7)
+    canvas.setFillColor(theme["title_text"])
+    canvas.setFont(fonts["bold"], font_size)
+    canvas.drawString(x, y, label)
+
+
 def draw_sheet_layout(
     canvas: Canvas,
     record: WifiRecord,
@@ -305,6 +325,15 @@ def _draw_basic_layout(
     draw_qr(canvas, qr_path, page_width - margin - 84, header_bottom + 1, 72, 72)
 
     info_y = header_bottom - 74
+    draw_unit_label(
+        canvas,
+        record,
+        margin + label_width + 12,
+        info_y + 62,
+        page_width - margin - 118 - (margin + label_width + 12),
+        fonts,
+        theme,
+    )
     draw_label_value_panel(
         canvas,
         margin,

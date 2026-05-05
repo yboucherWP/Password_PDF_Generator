@@ -129,6 +129,11 @@
       "title": "Update Crm Password Fields",
       "type": "boolean"
     },
+    "use_unit_labels_for_exports": {
+      "default": false,
+      "title": "Use Unit Labels For Exports",
+      "type": "boolean"
+    },
     "workdrive_folder_id": {
       "anyOf": [
         {

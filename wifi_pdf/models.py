@@ -68,6 +68,7 @@ class WifiBatchRequest(BaseModel):
     crm_record_id: str | None = None
     passwords_generated: bool = False
     update_crm_password_fields: bool = False
+    use_unit_labels_for_exports: bool = False
     workdrive_folder_id: str | None = None
     template_name: TemplateName = "basic_template"
     records: list[WifiRecord] = Field(min_length=1)

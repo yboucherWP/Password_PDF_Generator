@@ -135,6 +135,7 @@ class WifiPdfPipeline:
             "record_count": len(batch.records),
             "passwords_generated": batch.passwords_generated,
             "update_crm_password_fields": batch.update_crm_password_fields,
+            "use_unit_labels_for_exports": batch.use_unit_labels_for_exports,
             "records": [asdict(record) for record in record_outputs],
             "merged_pdf_path": relative_to_root(merged_pdf_path),
             "txt_export_path": relative_to_root(txt_export_path),
@@ -220,7 +221,7 @@ class WifiPdfPipeline:
         lines = ["Logement\tMot de passe"]
         for record in batch.records:
             password = record.password or ""
-            lines.append(f"{record.ssid}\t{password}")
+            lines.append(f"{self._export_record_label(batch, record)}\t{password}")
         txt_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         self.logger.info("Generated TXT export for building '%s'", batch.building_name)
         return txt_path
@@ -229,7 +230,7 @@ class WifiPdfPipeline:
         safe_building_name = self._safe_building_label(batch.building_name)
         ya_path = batch_dir / f"MDP_Site_APP {safe_building_name}.ya"
         first_line = batch.building_name if not batch.city else f"{batch.building_name} - {batch.city}"
-        ssids = ",".join(record.ssid for record in batch.records)
+        ssids = ",".join(self._export_record_label(batch, record) for record in batch.records)
         passwords = ",".join((record.password or "") for record in batch.records)
         vlans = ",".join(str(index * 10) for index in range(1, len(batch.records) + 1))
         ya_path.write_text(f"{first_line}\n{ssids}\n{passwords}\n{vlans}\n", encoding="utf-8")
@@ -257,6 +258,11 @@ class WifiPdfPipeline:
         if not safe_building_name:
             safe_building_name = sanitize_filename(building_name)
         return safe_building_name
+
+    def _export_record_label(self, batch: WifiBatchRequest, record) -> str:
+        if batch.use_unit_labels_for_exports and record.unit_label:
+            return record.unit_label
+        return record.ssid
 
 
 def process_payload(
