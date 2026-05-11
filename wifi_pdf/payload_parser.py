@@ -16,6 +16,14 @@ BUILDING_NAME_KEYS = ("building_name", "Building_Name", "Deal_Name", "deal_name"
 CITY_KEYS = ("city", "City", "Ville_de_l_immeuble", "ville_de_l_immeuble")
 CRM_RECORD_ID_KEYS = ("crm_record_id", "CRM_Record_Id", "record_id", "Record_Id", "Fiche_Id", "fiche_id")
 TEMPLATE_NAME_KEYS = ("template_name", "Template_Name")
+QR_CODE_ONLY_KEYS = (
+    "qr_code_only",
+    "QR Code Only",
+    "QR_Code_Only",
+    "Qr_Code_Only",
+    "Qr Code Only",
+    "QR_CODE_ONLY",
+)
 WORKDRIVE_KEYS = (
     "workdrive_folder_id",
     "Workdrive_folder_id",
@@ -52,6 +60,18 @@ def _get_first_present(mapping: dict[str, Any], keys: tuple[str, ...]) -> tuple[
         if key in mapping:
             return True, mapping[key]
     return False, None
+
+
+def get_qr_code_only_value(mapping: dict[str, Any]) -> Any:
+    value = _get_first(mapping, QR_CODE_ONLY_KEYS)
+    if value is not None:
+        return value
+
+    for key, candidate in mapping.items():
+        normalized_key = re.sub(r"[^a-z0-9]", "", str(key).casefold())
+        if normalized_key == "qrcodeonly":
+            return candidate
+    return None
 
 
 def _stringify(value: Any) -> str | None:
@@ -364,6 +384,9 @@ def normalize_payload(raw_payload: Any) -> dict[str, Any]:
     city = _clean_scalar(_get_first(payload, CITY_KEYS))
     crm_record_id = _clean_scalar(_get_first(payload, CRM_RECORD_ID_KEYS))
     template_name = _clean_scalar(_get_first(payload, TEMPLATE_NAME_KEYS)) or "basic_template"
+    qr_code_only = parse_bool_flag(get_qr_code_only_value(payload)) or False
+    if qr_code_only:
+        template_name = "qr_code_template"
     workdrive_folder_id = extract_workdrive_folder_id(_get_first(payload, WORKDRIVE_KEYS))
     ppsk_ssid = selected_ppsk_ssid(payload)
 
@@ -384,18 +407,26 @@ def normalize_payload(raw_payload: Any) -> dict[str, Any]:
             normalized["crm_record_id"] = crm_record_id
         if "passwords_generated" in payload:
             normalized["passwords_generated"] = payload["passwords_generated"]
-        if "update_crm_password_fields" in payload:
+        if qr_code_only:
+            normalized["update_crm_password_fields"] = False
+        elif "update_crm_password_fields" in payload:
             normalized["update_crm_password_fields"] = payload["update_crm_password_fields"]
         if "use_unit_labels_for_exports" in payload:
             normalized["use_unit_labels_for_exports"] = payload["use_unit_labels_for_exports"]
         elif ppsk_ssid:
             normalized["use_unit_labels_for_exports"] = True
+        normalized["qr_code_only"] = qr_code_only
         return normalized
 
     ssids = parse_string_list(_get_first(payload, SSIDS_KEYS), "ssids")
     units = parse_string_list(_get_first(payload, UNITS_KEYS), "units")
     unit_labels = parse_string_list(_get_first(payload, UNIT_LABEL_KEYS), "unit_labels")
     predefined = parse_bool_flag(_get_first(payload, PREDEFINED_KEYS))
+    if qr_code_only and predefined is not True:
+        raise PayloadValidationError(
+            "Qr_Code_Only requires Predfined/Predefined to be true with supplied passwords. "
+            "QR-only batches do not generate passwords or update CRM password fields."
+        )
 
     if not building_name:
         raise PayloadValidationError("Missing building_name or Deal_Name.")
@@ -408,8 +439,8 @@ def normalize_payload(raw_payload: Any) -> dict[str, Any]:
 
     passwords = parse_password_lists(payload)
     supplied_passwords_present = bool(passwords)
-    passwords_generated = False if ppsk_ssid else predefined is False or (predefined is None and not passwords)
-    update_crm_password_fields = passwords_generated and not supplied_passwords_present
+    passwords_generated = False if qr_code_only or ppsk_ssid else predefined is False or (predefined is None and not passwords)
+    update_crm_password_fields = False if qr_code_only else passwords_generated and not supplied_passwords_present
     if passwords_generated:
         passwords = generate_passwords(len(record_count_source))
     elif not passwords:
@@ -447,6 +478,7 @@ def normalize_payload(raw_payload: Any) -> dict[str, Any]:
         "passwords_generated": passwords_generated,
         "update_crm_password_fields": update_crm_password_fields,
         "use_unit_labels_for_exports": bool(ppsk_ssid),
+        "qr_code_only": qr_code_only,
         "template_name": template_name,
         "records": records,
     }

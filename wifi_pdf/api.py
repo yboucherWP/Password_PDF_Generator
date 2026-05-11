@@ -10,6 +10,7 @@ from .config import load_settings
 from .exceptions import ConfigurationError, PayloadValidationError, RenderingError, WorkDriveError
 from .jobs import JobStore
 from .logging_utils import configure_logging, resolve_log_dir
+from .payload_parser import get_qr_code_only_value
 from .pipeline import WifiPdfPipeline
 from .utils import batch_timestamp, relative_to_root, sanitize_filename
 from .models import parse_payload
@@ -101,6 +102,18 @@ async def create_wifi_pdfs(
         batch = parse_payload(payload)
     except PayloadValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    qr_flag_raw = get_qr_code_only_value(payload) if isinstance(payload, dict) else None
+    logger.info(
+        "Accepted WiFi PDF request for building '%s': records=%s template=%s qr_code_only=%s qr_flag_raw=%r passwords_generated=%s crm_password_update=%s",
+        batch.building_name,
+        len(batch.records),
+        batch.template_name,
+        batch.qr_code_only,
+        qr_flag_raw,
+        batch.passwords_generated,
+        batch.update_crm_password_fields,
+    )
 
     job_id = _build_job_id(batch.building_name)
     job_store.create(

@@ -9,7 +9,7 @@ from .payload_parser import normalize_payload
 
 
 AuthType = Literal["WPA", "WEP", "nopass"]
-TemplateName = Literal["basic_template"]
+TemplateName = Literal["basic_template", "qr_code_template"]
 
 
 class WifiRecord(BaseModel):
@@ -69,6 +69,7 @@ class WifiBatchRequest(BaseModel):
     passwords_generated: bool = False
     update_crm_password_fields: bool = False
     use_unit_labels_for_exports: bool = False
+    qr_code_only: bool = False
     workdrive_folder_id: str | None = None
     template_name: TemplateName = "basic_template"
     records: list[WifiRecord] = Field(min_length=1)
@@ -96,6 +97,23 @@ class WifiBatchRequest(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("template_name", mode="before")
+    @classmethod
+    def normalize_template_name(cls, value: str | None) -> str:
+        if value is None:
+            return "basic_template"
+        normalized = str(value).strip()
+        if normalized.casefold() in {"qr code template", "qr_code_template", "qr-code-template"}:
+            return "qr_code_template"
+        return normalized
+
+    @model_validator(mode="after")
+    def normalize_qr_code_only(self) -> "WifiBatchRequest":
+        if self.qr_code_only:
+            self.template_name = "qr_code_template"
+            self.update_crm_password_fields = False
+        return self
 
 
 def parse_payload(raw_payload: Any) -> WifiBatchRequest:

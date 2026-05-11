@@ -74,6 +74,7 @@ class WifiPdfPipeline:
         qr_dir = ensure_directory(batch_dir / "qr")
         individual_dir = ensure_directory(batch_dir / "individual")
         merged_dir = ensure_directory(batch_dir / "merged")
+        pdf_only = batch.qr_code_only
 
         self.logger.info(
             "Starting batch %s for building '%s' with %s records",
@@ -87,7 +88,10 @@ class WifiPdfPipeline:
         used_filename_bases: dict[str, int] = {}
 
         for index, record in enumerate(batch.records, start=1):
-            filename_seed = sanitize_filename(f"{batch.building_name}-{record.unit_label or record.ssid}")
+            if pdf_only:
+                filename_seed = sanitize_filename(f"{batch.building_name}_QR-{record.unit_label or record.ssid}")
+            else:
+                filename_seed = sanitize_filename(f"{batch.building_name}-{record.unit_label or record.ssid}")
             filename_count = used_filename_bases.get(filename_seed, 0)
             used_filename_bases[filename_seed] = filename_count + 1
             filename_base = filename_seed if filename_count == 0 else f"{filename_seed}-{filename_count + 1}"
@@ -117,14 +121,18 @@ class WifiPdfPipeline:
             )
             self.logger.info("Generated PDF for SSID '%s'", record.ssid)
 
-        txt_export_path = self._write_txt_export(batch_dir, batch)
-        ya_export_path = self._write_ya_export(batch_dir, batch)
+        txt_export_path = None if pdf_only else self._write_txt_export(batch_dir, batch)
+        ya_export_path = None if pdf_only else self._write_ya_export(batch_dir, batch)
 
         merged_pdf_path = merge_pdfs(
             pdf_paths,
-            merged_dir / f"{sanitize_filename(batch.building_name)}-merged.pdf",
+            merged_dir / self._merged_pdf_filename(batch),
         )
-        zip_export_path = self._write_zip_export(batch_dir, batch, pdf_paths, merged_pdf_path)
+        zip_export_path = (
+            self._write_qr_zip_export(batch_dir, batch, pdf_paths, merged_pdf_path)
+            if pdf_only
+            else self._write_zip_export(batch_dir, batch, pdf_paths, merged_pdf_path)
+        )
 
         manifest_payload = {
             "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -136,11 +144,12 @@ class WifiPdfPipeline:
             "passwords_generated": batch.passwords_generated,
             "update_crm_password_fields": batch.update_crm_password_fields,
             "use_unit_labels_for_exports": batch.use_unit_labels_for_exports,
+            "qr_code_only": batch.qr_code_only,
             "records": [asdict(record) for record in record_outputs],
             "merged_pdf_path": relative_to_root(merged_pdf_path),
-            "txt_export_path": relative_to_root(txt_export_path),
-            "zip_export_path": relative_to_root(zip_export_path),
-            "ya_export_path": relative_to_root(ya_export_path),
+            "txt_export_path": relative_to_root(txt_export_path) if txt_export_path else "",
+            "zip_export_path": relative_to_root(zip_export_path) if zip_export_path else "",
+            "ya_export_path": relative_to_root(ya_export_path) if ya_export_path else "",
             "workdrive_folder_id_requested": batch.workdrive_folder_id,
         }
         manifest_path = write_json_file(batch_dir / self.settings.output.manifest_filename, manifest_payload)
@@ -152,16 +161,20 @@ class WifiPdfPipeline:
         if self.settings.workdrive.enabled:
             client = ZohoWorkDriveClient(self.settings.workdrive, self.logger)
             folder_id = client.resolve_upload_folder_id(batch.workdrive_folder_id)
+            if pdf_only:
+                folder_id = client.find_or_create_child_folder_id(folder_id, "QR Codes")
             upload_candidates: list[Path] = []
             if self.settings.workdrive.upload_individual_pdfs:
                 upload_candidates.extend(pdf_paths)
             if self.settings.workdrive.upload_merged_pdf:
                 upload_candidates.append(merged_pdf_path)
-            if self.settings.workdrive.upload_txt_export:
+            if not pdf_only and self.settings.workdrive.upload_txt_export and txt_export_path:
                 upload_candidates.append(txt_export_path)
-            if self.settings.workdrive.upload_zip_export:
+            if pdf_only and zip_export_path:
                 upload_candidates.append(zip_export_path)
-            if self.settings.workdrive.upload_ya_export:
+            elif self.settings.workdrive.upload_zip_export and zip_export_path:
+                upload_candidates.append(zip_export_path)
+            if not pdf_only and self.settings.workdrive.upload_ya_export and ya_export_path:
                 upload_candidates.append(ya_export_path)
 
             for path in upload_candidates:
@@ -204,9 +217,9 @@ class WifiPdfPipeline:
             template_name=batch.template_name,
             batch_dir=relative_to_root(batch_dir),
             merged_pdf_path=relative_to_root(merged_pdf_path),
-            txt_export_path=relative_to_root(txt_export_path),
-            zip_export_path=relative_to_root(zip_export_path),
-            ya_export_path=relative_to_root(ya_export_path),
+            txt_export_path=relative_to_root(txt_export_path) if txt_export_path else "",
+            zip_export_path=relative_to_root(zip_export_path) if zip_export_path else "",
+            ya_export_path=relative_to_root(ya_export_path) if ya_export_path else "",
             manifest_path=relative_to_root(manifest_path),
             deleted_local_batch=deleted_local_batch,
             record_count=len(batch.records),
@@ -253,6 +266,21 @@ class WifiPdfPipeline:
         self.logger.info("Generated ZIP export for building '%s'", batch.building_name)
         return zip_path
 
+    def _write_qr_zip_export(
+        self,
+        batch_dir: Path,
+        batch: WifiBatchRequest,
+        pdf_paths: list[Path],
+        merged_pdf_path: Path,
+    ) -> Path:
+        zip_path = batch_dir / f"{sanitize_filename(batch.building_name)}_QR.zip"
+        with zipfile.ZipFile(zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for pdf_path in pdf_paths:
+                archive.write(pdf_path, arcname=pdf_path.name)
+            archive.write(merged_pdf_path, arcname=merged_pdf_path.name)
+        self.logger.info("Generated QR ZIP export for building '%s'", batch.building_name)
+        return zip_path
+
     def _safe_building_label(self, building_name: str) -> str:
         safe_building_name = building_name.replace("/", "-").replace("\\", "-").strip()
         if not safe_building_name:
@@ -263,6 +291,11 @@ class WifiPdfPipeline:
         if batch.use_unit_labels_for_exports and record.unit_label:
             return record.unit_label
         return record.ssid
+
+    def _merged_pdf_filename(self, batch: WifiBatchRequest) -> str:
+        if batch.qr_code_only:
+            return f"{sanitize_filename(batch.building_name)}_QR-merged.pdf"
+        return f"{sanitize_filename(batch.building_name)}-merged.pdf"
 
 
 def process_payload(

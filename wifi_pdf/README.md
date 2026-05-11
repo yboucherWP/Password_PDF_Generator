@@ -60,7 +60,7 @@ Compatibility note:
 
 - the code also accepts a raw JSON array of records for backward compatibility
 - the recommended production schema is the top-level object above because it carries building metadata and the per-batch WorkDrive folder id
-- `template_name` accepts `basic_template`; this is also the default when the field is omitted
+- `template_name` accepts `basic_template` or `qr_code_template`; `basic_template` is the default when the field is omitted
 - the API also accepts a thin CRM-style payload and normalizes it server-side
 
 Thin CRM-style payload accepted by the VM:
@@ -85,6 +85,7 @@ Server-side normalization rules:
 - `Ville_de_l_immeuble` or `City` is accepted as `city`
 - `record_id` / `Fiche_Id` is accepted as the Zoho CRM record id for post-generation updates
 - `Workdrive_folder` can be a full URL or a raw folder id
+- `QR Code Only` accepts a boolean flag; when it is true, the batch uses the QR Code Template and creates/uploads individual PDFs, the merged PDF, and one QR ZIP
 - `Type_de_MDP` controls the password mode; when it is `PPSK`, the app uses `PPSK_SSID` as the SSID for every PDF
 - `Predfined` / `Predefined` controls whether supplied values are used as-is or generated on the VM
 - `Unit_s`, `Mots_de_passes`, `Mots_de_passes_2`, `ssid_list`, and similar fields can be arrays, CSV strings, semicolon-separated strings, or newline-separated strings
@@ -175,18 +176,18 @@ wifi_pdf/
 3. Create a timestamped batch directory with `qr`, `individual`, and `merged` subfolders.
 4. Generate one QR image per WiFi record.
 5. Render one PDF per record using the reusable ReportLab template.
-6. Generate a tab-separated TXT export named `Mot de passe <building_name>.txt`.
-7. Generate a `.ya` export with:
+6. Generate a tab-separated TXT export named `Mot de passe <building_name>.txt`, unless `QR Code Only` is true.
+7. Generate a `.ya` export, unless `QR Code Only` is true, with:
    - line 1: `Deal_Name - City`
    - line 2: final SSIDs separated by commas, or raw units for PPSK batches
    - line 3: final passwords separated by commas
    - line 4: `10,20,30...` for the number of SSIDs
 8. Merge the PDFs in input order.
-9. Generate a ZIP export named `Mot de passe <building_name>.zip` that contains all individual PDFs plus the merged PDF.
+9. Generate a ZIP export containing all individual PDFs plus the merged PDF. Standard batches use `Mot de passe <building_name>.zip`; QR-only batches use `<building_name>_QR.zip`.
 10. Write a manifest without storing passwords.
 11. Return an accepted job id immediately so webhook callers do not wait for long-running uploads.
 12. Process the batch in the background.
-13. If WorkDrive is enabled, upload the merged PDF, TXT export, `.ya` export, ZIP export, and/or individual PDFs.
+13. If WorkDrive is enabled, upload the merged PDF, TXT export, `.ya` export, ZIP export, and/or individual PDFs; `QR Code Only` batches upload individual PDFs, the merged PDF, and the QR ZIP into a `QR Codes` folder under `Document locataire`.
 14. Delete the local batch folder after a successful run so local PDFs, TXT files, ZIPs, and manifests do not remain on disk.
 
 ## Error Handling Strategy
@@ -242,6 +243,7 @@ Upload behavior:
 - it searches inside that folder for a child folder named `Document locataire`
 - uploads go into that child folder
 - uploads include the merged PDF, the individual PDFs, the TXT export, the `.ya` export, and the ZIP export by default
+- QR-only uploads go into a `QR Codes` child folder under `Document locataire`; the folder is created if it does not exist
 - uploads overwrite same-name files in that child folder by default
 - if `Document locataire` is missing, the batch fails with a clear WorkDrive error instead of uploading to the wrong place
 

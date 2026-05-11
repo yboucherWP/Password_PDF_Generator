@@ -134,6 +134,11 @@
       "title": "Use Unit Labels For Exports",
       "type": "boolean"
     },
+    "qr_code_only": {
+      "default": false,
+      "title": "Qr Code Only",
+      "type": "boolean"
+    },
     "workdrive_folder_id": {
       "anyOf": [
         {
@@ -147,8 +152,11 @@
       "title": "Workdrive Folder Id"
     },
     "template_name": {
-      "const": "basic_template",
       "default": "basic_template",
+      "enum": [
+        "basic_template",
+        "qr_code_template"
+      ],
       "title": "Template Name",
       "type": "string"
     },

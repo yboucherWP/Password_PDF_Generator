@@ -52,6 +52,38 @@ class ZohoWorkDriveClient:
         )
         return child_folder_id
 
+    def find_or_create_child_folder_id(self, parent_folder_id: str, folder_name: str) -> str:
+        target_folder_name = folder_name.strip()
+        if not target_folder_name:
+            return parent_folder_id
+
+        timeout = httpx.Timeout(60.0, connect=20.0)
+        with httpx.Client(timeout=timeout) as client:
+            access_token = self._get_access_token(client)
+            headers = {"Authorization": f"Zoho-oauthtoken {access_token}"}
+            try:
+                folder_id = self._find_child_folder_id(
+                    client=client,
+                    headers=headers,
+                    parent_folder_id=parent_folder_id,
+                    target_folder_name=target_folder_name,
+                )
+            except WorkDriveError:
+                folder_id = self._create_child_folder(
+                    client=client,
+                    headers=headers,
+                    parent_folder_id=parent_folder_id,
+                    folder_name=target_folder_name,
+                )
+
+        self.logger.info(
+            "Resolved WorkDrive child folder '%s' inside parent %s -> %s",
+            target_folder_name,
+            parent_folder_id,
+            folder_id,
+        )
+        return folder_id
+
     def _get_access_token(self, client: httpx.Client) -> str:
         if self._access_token:
             return self._access_token
@@ -196,3 +228,57 @@ class ZohoWorkDriveClient:
         raise WorkDriveError(
             f"Could not find a child folder named '{target_folder_name}' inside WorkDrive folder '{parent_folder_id}'."
         )
+
+    def _create_child_folder(
+        self,
+        client: httpx.Client,
+        headers: dict[str, str],
+        parent_folder_id: str,
+        folder_name: str,
+    ) -> str:
+        create_headers = {
+            **headers,
+            "Accept": "application/vnd.api+json",
+            "Content-Type": "application/json",
+        }
+        response = client.post(
+            f"{self.settings.api_base_url}/files",
+            headers=create_headers,
+            json={
+                "data": {
+                    "type": "files",
+                    "attributes": {
+                        "name": folder_name,
+                        "parent_id": parent_folder_id,
+                    },
+                }
+            },
+        )
+        if response.status_code == 409:
+            return self._find_child_folder_id(
+                client=client,
+                headers=headers,
+                parent_folder_id=parent_folder_id,
+                target_folder_name=folder_name,
+            )
+        if response.status_code >= 400:
+            raise WorkDriveError(
+                f"WorkDrive folder creation failed for '{folder_name}' inside '{parent_folder_id}' "
+                f"with status {response.status_code}: {response.text}"
+            )
+
+        try:
+            payload = response.json()
+        except json.JSONDecodeError as exc:
+            raise WorkDriveError(
+                f"WorkDrive folder creation for '{folder_name}' returned invalid JSON: {response.text}"
+            ) from exc
+
+        data = payload.get("data")
+        folder_id = data.get("id") if isinstance(data, dict) else None
+        if not folder_id:
+            raise WorkDriveError(
+                f"WorkDrive folder creation for '{folder_name}' did not return a folder id: {payload}"
+            )
+        self.logger.info("Created WorkDrive folder '%s' inside parent %s", folder_name, parent_folder_id)
+        return str(folder_id)
