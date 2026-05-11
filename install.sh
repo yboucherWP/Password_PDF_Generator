@@ -13,7 +13,7 @@ LOG_DIR="${PASSWORD_PDF_LOG_DIR:-${LOG_DIR:-${SERVICE_ROOT}/logs}}"
 CONFIG_PATH="${PASSWORD_PDF_CONFIG_PATH:-${CONFIG_PATH:-${CONFIG_DIR}/brand_settings.json}}"
 ENV_FILE="${PASSWORD_PDF_ENV_FILE:-${ENV_FILE:-${CONFIG_DIR}/${APP_NAME}.env}}"
 META_FILE="${PASSWORD_PDF_META_FILE:-${META_FILE:-${CONFIG_DIR}/install-meta.env}}"
-REPO_URL="${PASSWORD_PDF_REPO_URL:-${REPO_URL:-https://github.com/yboucher97/Password_PDF_Generator.git}}"
+REPO_URL="${PASSWORD_PDF_REPO_URL:-${REPO_URL:-https://github.com/yboucherWP/Password_PDF_Generator.git}}"
 REPO_REF="${PASSWORD_PDF_REPO_REF:-${REPO_REF:-main}}"
 PORT="${PASSWORD_PDF_PORT:-${PORT:-8000}}"
 HOST="${PASSWORD_PDF_HOST:-${HOST:-}}"
@@ -159,7 +159,7 @@ prompt_yes_no() {
 
 require_root() {
   if [[ "${EUID}" -ne 0 ]]; then
-    fail "Run this installer as root. Example: sudo bash <(curl -fsSL https://raw.githubusercontent.com/yboucher97/Password_PDF_Generator/main/install.sh)"
+    fail "Run this installer as root. Example: sudo bash <(curl -fsSL https://raw.githubusercontent.com/yboucherWP/Password_PDF_Generator/main/install.sh)"
   fi
 }
 

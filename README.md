@@ -36,7 +36,7 @@ The PDF app keeps its own code, venv, config, data, and logs together under one 
 Run this on the target machine:
 
 ```bash
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/yboucher97/Password_PDF_Generator/main/install.sh)
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/yboucherWP/Password_PDF_Generator/main/install.sh)
 ```
 
 The installer:
